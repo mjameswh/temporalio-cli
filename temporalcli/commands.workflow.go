@@ -94,7 +94,7 @@ func (c *TemporalWorkflowResetCommand) run(cctx *CommandContext, _ []string) err
 		ResetReapplyType:          reapplyType,
 	})
 	if err != nil {
-		return fmt.Errorf("reset failed: %w", err)
+		return fmt.Errorf("failed to reset workflow: %w", err)
 	}
 
 	if cctx.JSONOutput {
@@ -323,7 +323,7 @@ func getLastWorkflowTaskEventID(ctx context.Context, namespace, wid, rid string,
 			WorkflowId: wid,
 			RunId:      rid,
 		},
-		MaximumPageSize: 1000,
+		MaximumPageSize: 250,
 		NextPageToken:   nil,
 	}
 
@@ -362,7 +362,7 @@ func getFirstWorkflowTaskEventID(ctx context.Context, namespace, wid, rid string
 			WorkflowId: wid,
 			RunId:      rid,
 		},
-		MaximumPageSize: 1000,
+		MaximumPageSize: 250,
 		NextPageToken:   nil,
 	}
 	for {
@@ -420,7 +420,7 @@ func getLastContinueAsNewID(ctx context.Context, namespace, wid, rid string, wfs
 			WorkflowId: wid,
 			RunId:      resetBaseRunID,
 		},
-		MaximumPageSize: 1000,
+		MaximumPageSize: 250,
 		NextPageToken:   nil,
 	}
 	for {

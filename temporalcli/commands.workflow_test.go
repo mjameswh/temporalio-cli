@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
+	workflowpb "go.temporal.io/api/workflow/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -282,11 +282,28 @@ func (s *SharedServerSuite) testTerminateBatchWorkflow(json bool) *CommandResult
 	return res
 }
 
+func (s *SharedServerSuite) awaitResetWorkflow(searchAttr string) {
+	var lastExecs []*workflowpb.WorkflowExecutionInfo
+	s.Eventually(func() bool {
+		resp, err := s.Client.ListWorkflow(s.Context, &workflowservice.ListWorkflowExecutionsRequest{
+			Query: "CustomKeywordField = '" + searchAttr + "'",
+		})
+		s.NoError(err)
+		lastExecs = resp.Executions
+		return len(resp.Executions) == 2 && resp.Executions[0].Status == enums.WORKFLOW_EXECUTION_STATUS_COMPLETED
+	}, 3*time.Second, 100*time.Millisecond, "Reset execution failed to complete", lastExecs)
+}
+
 func (s *SharedServerSuite) TestWorkflow_Reset_ToFirstWorkflowTask() {
-	var executions int
+	var wfExecutions, activityExecutions int
+	s.Worker.OnDevActivity(func(ctx context.Context, a any) (any, error) {
+		activityExecutions++
+		return nil, nil
+	})
 	s.Worker.OnDevWorkflow(func(ctx workflow.Context, a any) (any, error) {
-		executions++
-		return nil, ctx.Err()
+		workflow.ExecuteActivity(ctx, DevActivity, 1).Get(ctx, nil)
+		wfExecutions++
+		return nil, nil
 	})
 
 	// Start the workflow
@@ -303,7 +320,7 @@ func (s *SharedServerSuite) TestWorkflow_Reset_ToFirstWorkflowTask() {
 	s.NoError(err)
 	var junk any
 	s.NoError(run.Get(s.Context, &junk))
-	s.Equal(1, executions)
+	s.Equal(1, wfExecutions)
 
 	// Reset to the first workflow task
 	res := s.Execute(
@@ -314,29 +331,51 @@ func (s *SharedServerSuite) TestWorkflow_Reset_ToFirstWorkflowTask() {
 		"--reason", "test-reset-FirstWorkflowTask",
 	)
 	require.NoError(s.T(), res.Err)
-	s.Eventually(func() bool {
-		resp, err := s.Client.ListWorkflow(s.Context, &workflowservice.ListWorkflowExecutionsRequest{
-			Query: "CustomKeywordField = '" + searchAttr + "'",
-		})
-		s.NoError(err)
-		if len(resp.Executions) != 2 {
-			return false
-		}
-		for i := range resp.Executions {
-			s.T().Logf("%v", resp.Executions[i])
-		}
-		return resp.Executions[0].Status == enums.WORKFLOW_EXECUTION_STATUS_COMPLETED
-	}, 5*time.Second, 100*time.Millisecond, "Reset workflow failed to finish executing")
-
-	s.Equal(2, executions, "Should have re-executed the workflow")
+	s.awaitResetWorkflow(searchAttr)
+	s.Equal(2, wfExecutions, "Should have re-executed the workflow from the beginning")
+	s.Greater(activityExecutions, 1, "Should have re-executed the workflow from the beginning")
 }
 
 func (s *SharedServerSuite) TestWorkflow_Reset_ToLastWorkflowTask() {
-	s.Worker.OnDevWorkflow(func(ctx workflow.Context, a any) (any, error) {
-		ctx.Done().Receive(ctx, nil)
-		return nil, ctx.Err()
+	var wfExecutions, activityExecutions int
+	s.Worker.OnDevActivity(func(ctx context.Context, a any) (any, error) {
+		activityExecutions++
+		return nil, nil
 	})
-	s.Fail("Not implemented")
+	s.Worker.OnDevWorkflow(func(ctx workflow.Context, a any) (any, error) {
+		workflow.ExecuteActivity(ctx, DevActivity, 1).Get(ctx, nil)
+		wfExecutions++
+		return nil, nil
+	})
+
+	// Start the workflow
+	searchAttr := "keyword-" + uuid.NewString()
+	run, err := s.Client.ExecuteWorkflow(
+		s.Context,
+		client.StartWorkflowOptions{
+			TaskQueue:        s.Worker.Options.TaskQueue,
+			SearchAttributes: map[string]any{"CustomKeywordField": searchAttr},
+		},
+		DevWorkflow,
+		"ignored",
+	)
+	s.NoError(err)
+	var junk any
+	s.NoError(run.Get(s.Context, &junk))
+	s.Equal(1, wfExecutions)
+
+	// Reset to the final workflow task
+	res := s.Execute(
+		"workflow", "reset",
+		"--address", s.Address(),
+		"-w", run.GetID(),
+		"-t", "LastWorkflowTask",
+		"--reason", "test-reset-LastWorkflowTask",
+	)
+	require.NoError(s.T(), res.Err)
+	s.awaitResetWorkflow(searchAttr)
+	s.Equal(2, wfExecutions, "Should re-executed the workflow")
+	s.Equal(1, activityExecutions, "Should not have re-executed the activity")
 }
 
 func (s *SharedServerSuite) TestWorkflow_Reset_ToLastContinuedAsNew() {
@@ -348,6 +387,8 @@ func (s *SharedServerSuite) TestWorkflow_Reset_ToLastContinuedAsNew() {
 }
 
 func (s *SharedServerSuite) TestWorkflow_Reset_ToEventID() {
+	// We execute two activities and will resume just before the second one. We use the same activity for both
+	// but a unique input so we can check which fake activity is executed
 	var oneExecutions, twoExecutions int
 	s.Worker.OnDevActivity(func(ctx context.Context, a any) (any, error) {
 		n, ok := a.(float64)
@@ -366,12 +407,6 @@ func (s *SharedServerSuite) TestWorkflow_Reset_ToEventID() {
 	})
 
 	s.Worker.OnDevWorkflow(func(ctx workflow.Context, a any) (any, error) {
-		ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-			StartToCloseTimeout: 10 * time.Second,
-			RetryPolicy: &temporal.RetryPolicy{
-				MaximumAttempts: 1,
-			},
-		})
 		var res any
 		if err := workflow.ExecuteActivity(ctx, DevActivity, 1).Get(ctx, &res); err != nil {
 			return res, err
@@ -441,20 +476,8 @@ func (s *SharedServerSuite) TestWorkflow_Reset_ToEventID() {
 		"--reason", "test-reset-event-id",
 	)
 	require.NoError(s.T(), res.Err)
-	s.Eventually(func() bool {
-		resp, err := s.Client.ListWorkflow(s.Context, &workflowservice.ListWorkflowExecutionsRequest{
-			Query: "CustomKeywordField = '" + searchAttr + "'",
-		})
-		s.NoError(err)
-		if len(resp.Executions) != 2 {
-			return false
-		}
-		for i := range resp.Executions {
-			s.T().Logf("%v", resp.Executions[i])
-		}
-		return resp.Executions[0].Status == enums.WORKFLOW_EXECUTION_STATUS_COMPLETED
-	}, 5*time.Second, 100*time.Millisecond, "Reset workflow failed to finish executing")
 
-	s.Equal(1, oneExecutions, "should not have re-executed the first activity")
-	s.Equal(2, twoExecutions, "should have re-executed the second activity")
+	s.awaitResetWorkflow(searchAttr)
+	s.Equal(1, oneExecutions, "Should not have re-executed the first activity")
+	s.Equal(2, twoExecutions, "Should have re-executed the second activity")
 }

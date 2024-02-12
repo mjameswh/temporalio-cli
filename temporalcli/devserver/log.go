@@ -10,7 +10,7 @@ import (
 
 type slogLogger struct{ log *slog.Logger }
 
-var _ log.Logger
+var _ log.Logger = slogLogger{}
 
 func (s slogLogger) Debug(msg string, tags ...tag.Tag) { s.Log(slog.LevelDebug, msg, tags) }
 func (s slogLogger) Info(msg string, tags ...tag.Tag)  { s.Log(slog.LevelInfo, msg, tags) }

@@ -133,10 +133,6 @@ func (c *TemporalWorkflowTerminateCommand) run(cctx *CommandContext, _ []string)
 	return nil
 }
 
-func (*TemporalWorkflowTraceCommand) run(*CommandContext, []string) error {
-	return fmt.Errorf("TODO")
-}
-
 func (*TemporalWorkflowUpdateCommand) run(*CommandContext, []string) error {
 	return fmt.Errorf("TODO")
 }

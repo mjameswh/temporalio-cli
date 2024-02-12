@@ -267,6 +267,8 @@ func (c *CommandOption) writeStructField(w *codeWriter) error {
 		goDataType = "[]string"
 	case "string-enum":
 		goDataType = "StringEnum"
+	case "string-enum[]":
+		goDataType = "StringEnumArray"
 	default:
 		return fmt.Errorf("unrecognized data type %v", c.DataType)
 	}
@@ -308,6 +310,9 @@ func (c *CommandOption) writeFlagBuilding(selfVar, flagVar string, w *codeWriter
 		if len(c.EnumValues) == 0 {
 			return fmt.Errorf("missing enum values")
 		}
+		if c.DefaultValue == "" {
+			return fmt.Errorf("default value is required for string enum")
+		}
 		// Create enum
 		pieces := make([]string, len(c.EnumValues))
 		for i, enumVal := range c.EnumValues {
@@ -315,6 +320,27 @@ func (c *CommandOption) writeFlagBuilding(selfVar, flagVar string, w *codeWriter
 		}
 		w.writeLinef("%v.%v = NewStringEnum([]string{%v}, %q)",
 			selfVar, c.fieldName(), strings.Join(pieces, ", "), c.DefaultValue)
+		flagMeth = "Var"
+	case "string-enum[]":
+		if len(c.EnumValues) == 0 {
+			return fmt.Errorf("missing enum values")
+		}
+		// Create allowed values enum array
+		allowedValuesArray := make([]string, len(c.EnumValues))
+		for i, enumVal := range c.EnumValues {
+			allowedValuesArray[i] = fmt.Sprintf("%q", enumVal)
+		}
+		// Create default value array
+		defaultValuesArray := []string{}
+		if (c.DefaultValue != "") {
+			defaultValues := strings.Split(c.DefaultValue, ",")
+			defaultValuesArray = make([]string, len(defaultValues))
+			for i, enumVal := range defaultValues {
+				defaultValuesArray[i] = fmt.Sprintf("%q", strings.TrimSpace(enumVal))
+			}
+		}
+		w.writeLinef("%v.%v = NewStringEnumArray([]string{%v}, []string{%v})",
+			selfVar, c.fieldName(), strings.Join(allowedValuesArray, ", "), strings.Join(defaultValuesArray, ", "))
 		flagMeth = "Var"
 	default:
 		return fmt.Errorf("unrecognized data type %v", c.DataType)

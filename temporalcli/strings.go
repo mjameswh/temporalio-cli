@@ -19,9 +19,10 @@ func NewStringEnum(allowed []string, value string) StringEnum {
 func (s *StringEnum) String() string { return s.Value }
 
 func (s *StringEnum) Set(p string) error {
+	p = strings.ToLower(p)
 	for _, allowed := range s.Allowed {
-		if p == allowed {
-			s.Value = p
+		if p == strings.ToLower(allowed) {
+			s.Value = allowed
 			return nil
 		}
 	}
@@ -29,6 +30,44 @@ func (s *StringEnum) Set(p string) error {
 }
 
 func (*StringEnum) Type() string { return "string" }
+
+type StringEnumArray struct {
+	Allowed []string
+	Values  []string
+}
+
+func NewStringEnumArray(allowed []string, values []string) StringEnumArray {
+	return StringEnumArray{Allowed: allowed, Values: values}
+}
+
+func (s *StringEnumArray) String() string { return strings.Join(s.Values, ", ") }
+
+func (s *StringEnumArray) Set(p string) error {
+	rawValues := strings.Split(p, ",")
+	normalizedValues := make([]string, len(rawValues))
+	for i, value := range rawValues {
+		value = strings.TrimSpace(value)
+		normalized, err := s.checkValue(value)
+		if err != nil {
+			return err
+		}
+		normalizedValues[i] = normalized
+	}
+	s.Values = normalizedValues
+	return nil
+}
+
+func (s *StringEnumArray) checkValue(p string) (string, error) {
+	pp := strings.ToLower(p)
+	for _, allowed := range s.Allowed {
+		if pp == strings.ToLower(allowed) {
+			return allowed, nil
+		}
+	}
+	return p, fmt.Errorf("%v is not one of required values of %v", p, strings.Join(s.Allowed, ", "))
+}
+
+func (*StringEnumArray) Type() string { return "string" }
 
 func stringToProtoEnum[T ~int32](s string, maps ...map[string]int32) (T, error) {
 	// Go over each map looking, if not there, use first map to build set of

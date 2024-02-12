@@ -347,9 +347,9 @@ func NewTemporalWorkflowCommand(cctx *CommandContext, parent *TemporalCommand) *
 	s.Command.Use = "workflow"
 	s.Command.Short = "Start, list, and operate on Workflows."
 	if hasHighlighting {
-		s.Command.Long = "Workflow commands perform operations on \nWorkflow Executions.\n\nWorkflow commands use this syntax:\x1b[1mtemporal workflow COMMAND [ARGS]\x1b[0m."
+		s.Command.Long = "Workflow commands perform operations on Workflow Executions.\n\nWorkflow commands use this syntax:\x1b[1mtemporal workflow COMMAND [ARGS]\x1b[0m."
 	} else {
-		s.Command.Long = "Workflow commands perform operations on \nWorkflow Executions.\n\nWorkflow commands use this syntax:`temporal workflow COMMAND [ARGS]`."
+		s.Command.Long = "Workflow commands perform operations on Workflow Executions.\n\nWorkflow commands use this syntax:`temporal workflow COMMAND [ARGS]`."
 	}
 	s.Command.Args = cobra.NoArgs
 	s.Command.AddCommand(&NewTemporalWorkflowCancelCommand(cctx, &s).Command)
@@ -792,9 +792,9 @@ func NewTemporalWorkflowTerminateCommand(cctx *CommandContext, parent *TemporalW
 	s.Command.Use = "terminate [flags]"
 	s.Command.Short = "Terminate Workflow Execution by ID or List Filter."
 	if hasHighlighting {
-		s.Command.Long = "The \x1b[1mtemporal workflow terminate\x1b[0m command is used to terminate a Workflow Execution. \nCanceling a running Workflow Execution records a \x1b[1mWorkflowExecutionTerminated\x1b[0m event as the closing Event in the workflow's Event History. \nWorkflow code is oblivious to termination. Use \x1b[1mtemporal workflow cancel\x1b[0m if you need to perform cleanup in your workflow.\n\nExecutions may be terminated by ID with an optional reason:\n\x1b[1mtemporal workflow terminate [--reason my-reason] --workflow-id MyWorkflowId\x1b[0m\n\n...or in bulk via a visibility query list filter:\n\x1b[1mtemporal workflow terminate --query=MyQuery\x1b[0m\n\nUse the options listed below to change the behavior of this command."
+		s.Command.Long = "The \x1b[1mtemporal workflow terminate\x1b[0m command is used to terminate a Workflow Execution.\nCanceling a running Workflow Execution records a \x1b[1mWorkflowExecutionTerminated\x1b[0m event as the closing Event in the workflow's Event History.\nWorkflow code is oblivious to termination. Use \x1b[1mtemporal workflow cancel\x1b[0m if you need to perform cleanup in your workflow.\n\nExecutions may be terminated by ID with an optional reason:\n\x1b[1mtemporal workflow terminate [--reason my-reason] --workflow-id MyWorkflowId\x1b[0m\n\n...or in bulk via a visibility query list filter:\n\x1b[1mtemporal workflow terminate --query=MyQuery\x1b[0m\n\nUse the options listed below to change the behavior of this command."
 	} else {
-		s.Command.Long = "The `temporal workflow terminate` command is used to terminate a Workflow Execution. \nCanceling a running Workflow Execution records a `WorkflowExecutionTerminated` event as the closing Event in the workflow's Event History. \nWorkflow code is oblivious to termination. Use `temporal workflow cancel` if you need to perform cleanup in your workflow.\n\nExecutions may be terminated by ID with an optional reason:\n```\ntemporal workflow terminate [--reason my-reason] --workflow-id MyWorkflowId\n```\n\n...or in bulk via a visibility query list filter:\n```\ntemporal workflow terminate --query=MyQuery\n```\n\nUse the options listed below to change the behavior of this command."
+		s.Command.Long = "The `temporal workflow terminate` command is used to terminate a Workflow Execution.\nCanceling a running Workflow Execution records a `WorkflowExecutionTerminated` event as the closing Event in the workflow's Event History.\nWorkflow code is oblivious to termination. Use `temporal workflow cancel` if you need to perform cleanup in your workflow.\n\nExecutions may be terminated by ID with an optional reason:\n```\ntemporal workflow terminate [--reason my-reason] --workflow-id MyWorkflowId\n```\n\n...or in bulk via a visibility query list filter:\n```\ntemporal workflow terminate --query=MyQuery\n```\n\nUse the options listed below to change the behavior of this command."
 	}
 	s.Command.Args = cobra.NoArgs
 	s.Command.Flags().StringVarP(&s.WorkflowId, "workflow-id", "w", "", "Workflow Id. Either this or query must be set.")
@@ -813,6 +813,11 @@ func NewTemporalWorkflowTerminateCommand(cctx *CommandContext, parent *TemporalW
 type TemporalWorkflowTraceCommand struct {
 	Parent  *TemporalWorkflowCommand
 	Command cobra.Command
+	WorkflowReferenceOptions
+	Concurrency int
+	Depth       int
+	Fold        StringEnumArray
+	NoFold      bool
 }
 
 func NewTemporalWorkflowTraceCommand(cctx *CommandContext, parent *TemporalWorkflowCommand) *TemporalWorkflowTraceCommand {
@@ -821,8 +826,18 @@ func NewTemporalWorkflowTraceCommand(cctx *CommandContext, parent *TemporalWorkf
 	s.Command.DisableFlagsInUseLine = true
 	s.Command.Use = "trace [flags]"
 	s.Command.Short = "Trace progress of a Workflow Execution and its children."
-	s.Command.Long = "TODO"
+	if hasHighlighting {
+		s.Command.Long = "The \x1b[1mtemporal workflow trace\x1b[0m command tracks the progress of a Workflow Execution and any Child Workflows it generates.\n\nUse the options listed below to change the command's behavior."
+	} else {
+		s.Command.Long = "The `temporal workflow trace` command tracks the progress of a Workflow Execution and any Child Workflows it generates.\n\nUse the options listed below to change the command's behavior."
+	}
 	s.Command.Args = cobra.NoArgs
+	s.WorkflowReferenceOptions.buildFlags(cctx, s.Command.Flags())
+	s.Command.Flags().IntVar(&s.Concurrency, "concurrency", 10, "Request concurrency.")
+	s.Command.Flags().IntVar(&s.Depth, "depth", -1, "Depth of child workflows to fetch. Use -1 to fetch child workflows at any depth.")
+	s.Fold = NewStringEnumArray([]string{"running", "completed", "failed", "canceled", "terminated", "continuedAsNew", "timedOut"}, []string{"completed", "canceled", "terminated"})
+	s.Command.Flags().Var(&s.Fold, "fold", "Statuses for which Child Workflows will be folded in (this will reduce the number of information fetched and displayed). Case-insensitive and ignored if --no-fold supplied.")
+	s.Command.Flags().BoolVar(&s.NoFold, "no-fold", false, "Disable folding. All Child Workflows within the set depth will be fetched and displayed.")
 	s.Command.Run = func(c *cobra.Command, args []string) {
 		if err := s.run(cctx, args); err != nil {
 			cctx.Options.Fail(err)

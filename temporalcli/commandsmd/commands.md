@@ -19,7 +19,7 @@ This document has a specific structure used by a parser. Here are the rules:
     * Can have bullets
       * Each bullet is `* <option-names> (<data-type>) - <short-description>. <extra-attributes>`.
       * `<option-names>` is `` `--<option-name>` `` and can optionally be followed by ``, `-<short-name>` ``.
-      * `<data-type>` must be one of `bool`, `duration`, `int`, `string`, `string[]`, `string-enum`, TODO: more
+      * `<data-type>` must be one of `bool`, `duration`, `int`, `string`, `string[]`, `string-enum`, `string-enum[]`, TODO: more
       * `<short-description>` can be just about anything so long as it doesn't match trailing attributes. Any wrap
         around to newlines + two-space indention is trimmed to a single space.
       * `<extra-attributes>` can be:
@@ -184,8 +184,7 @@ Use the options listed below to modify what this command returns.
 
 ### temporal workflow: Start, list, and operate on Workflows.
 
-[Workflow](/concepts/what-is-a-workflow) commands perform operations on 
-[Workflow Executions](/concepts/what-is-a-workflow-execution).
+[Workflow](/concepts/what-is-a-workflow) commands perform operations on [Workflow Executions](/concepts/what-is-a-workflow-execution).
 
 Workflow commands use this syntax:`temporal workflow COMMAND [ARGS]`.
 
@@ -385,8 +384,8 @@ temporal workflow start \
 
 ### temporal workflow terminate: Terminate Workflow Execution by ID or List Filter.
 
-The `temporal workflow terminate` command is used to terminate a [Workflow Execution](/concepts/what-is-a-workflow-execution). 
-Canceling a running Workflow Execution records a `WorkflowExecutionTerminated` event as the closing Event in the workflow's Event History. 
+The `temporal workflow terminate` command is used to terminate a [Workflow Execution](/concepts/what-is-a-workflow-execution).
+Canceling a running Workflow Execution records a `WorkflowExecutionTerminated` event as the closing Event in the workflow's Event History.
 Workflow code is oblivious to termination. Use `temporal workflow cancel` if you need to perform cleanup in your workflow.
 
 Executions may be terminated by [ID](/concepts/what-is-a-workflow-id) with an optional reason:
@@ -411,7 +410,18 @@ Use the options listed below to change the behavior of this command.
 
 ### temporal workflow trace: Trace progress of a Workflow Execution and its children.
 
-TODO
+The `temporal workflow trace` command tracks the progress of a [Workflow Execution](/concepts/what-is-a-workflow-execution) and any [Child Workflows](/concepts/what-is-a-child-workflow-execution) it generates.
+
+Use the options listed below to change the command's behavior.
+
+#### Options
+
+* `--concurrency` (int) - Request concurrency. Default: 10.
+* `--depth` (int) - Depth of child workflows to fetch. Use -1 to fetch child workflows at any depth. Default: -1.
+* `--fold` (string-enum[]) - Statuses for which Child Workflows will be folded in (this will reduce the number of information fetched and displayed). Case-insensitive and ignored if --no-fold supplied. Options: running, completed, failed, canceled, terminated, continuedAsNew, timedOut. Default: completed, canceled, terminated.
+* `--no-fold` (bool) - Disable folding. All Child Workflows within the set depth will be fetched and displayed.
+
+Includes options set for [workflow reference](#options-set-for-workflow-reference).
 
 ### temporal workflow update: Updates a running workflow synchronously.
 
